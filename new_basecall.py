@@ -22,7 +22,11 @@ def concatenate_fastq_files(barcode_path, output_file):
                 outfile.write(infile.read())
 
 # Reading the inputs from CSV file
-csv_file_path = 'input.csv'  # it looks for input.csv file always, change it if you want
+if len(sys.argv) != 2:
+    print("Usage: python script.py <input.csv>")
+    sys.exit(1)
+
+csv_file_path = sys.argv[1]  # it looks for input.csv file always, change it if you want
 with open(csv_file_path, 'r') as csvfile:
     csv_reader = csv.DictReader(csvfile)
     for row in csv_reader:
