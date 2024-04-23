@@ -1,6 +1,8 @@
 import os
 import subprocess
 import csv
+import sys
+
 #####Author Mathu Malar C Mathu.Malar@inspection.gc.ca######
 def run_command(command):
     try:
@@ -36,7 +38,7 @@ with open(csv_file_path, 'r') as csvfile:
         config = row['config']
         barcode = row['barcode']
         barcode_values = [int(x) for x in row['barcode_values'].split(',')]
-        
+       
         # Creating the output directory if it doesn't exist
         try:
             os.makedirs(output_dir, exist_ok=True)
@@ -80,4 +82,3 @@ with open(csv_file_path, 'r') as csvfile:
                 os.remove(concatenated_fastq_file)
             else:
                 print(f"Oops no barcode directory found for {barcode_dir}")
-
