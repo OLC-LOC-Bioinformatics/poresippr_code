@@ -3,8 +3,10 @@ import subprocess
 import csv
 import sys
 import time
+import argparse 
 
-#####Author Mathu Malar C Mathu.Malar@inspection.gc.ca######
+##### Author Mathu Malar C Mathu.Malar@inspection.gc.ca ######
+
 def run_command(command):
     try:
         process = subprocess.run(command, shell=True, check=True, text=True)
@@ -24,12 +26,23 @@ def concatenate_fastq_files(barcode_path, output_file):
             with open(os.path.join(barcode_path, fastq_file), 'r') as infile:
                 outfile.write(infile.read())
 
+def print_usage():
+    if "SINGULARITY_NAME" in os.environ:
+        print("Usage: singularity run --nv mycontainer.sif <input.csv>")
+    else:
+        print("Usage: python poresippr_basecall_scheduler.py <input.csv>")
+
+# Set up argument parsing
+parser = argparse.ArgumentParser(description='This script runs Guppy basecaller and downstream analysis such as mapping with minimap2 and samtools.')
+parser.add_argument('csv_file_path', help='Path to the input CSV file.')
+args = parser.parse_args()
+
 # Reading the inputs from CSV file
 if len(sys.argv) != 2:
-    print("Usage: python script.py <input.csv>")
+    print_usage()
     sys.exit(1)
 
-csv_file_path = sys.argv[1]  # it looks for input.csv file always, change it if you want
+csv_file_path = args.csv_file_path  # it looks for input.csv file always, change it if you want
 
 iteration = 1  # Initialize iteration counter
 
@@ -43,7 +56,7 @@ while True:  # Loop to keep running Guppy and downstream analysis
             config = row['config']
             barcode = row['barcode']
             barcode_values = [int(x) for x in row['barcode_values'].split(',')]
-            
+
             # Creating the output directory if it doesn't exist
             try:
                 os.makedirs(output_dir, exist_ok=True)
@@ -51,8 +64,8 @@ while True:  # Loop to keep running Guppy and downstream analysis
                 print(f"Error creating output directory: {output_dir}")
                 print(f"Error message: {e}")
 
-            # Runing guppy fast basecalling
-            guppy_command = f"guppy_basecaller --input_path {fast5_dir} --save_path {output_dir} --config {config} --barcode_kits {barcode} -x auto -r"
+            # Running guppy fast basecalling
+            guppy_command = f"guppy_basecaller --input_path {fast5_dir} --save_path {output_dir} --config {config} --barcode_kits {barcode}  -x auto -r"
             print(f"Running guppy command please sit back: {guppy_command}")
             run_command(guppy_command)
 
@@ -72,8 +85,8 @@ while True:  # Loop to keep running Guppy and downstream analysis
                     run_command(minimap2_command)
 
                     # Calculating coverage and sorting the output from samtools out
-                    csv_file = os.path.join(output_dir, f"{barcode_dir}_coverage{iteration}.csv")
-                    samtools_command = f"samtools coverage {bam_file} | cut -f 1,4 | awk '$2 > 0' | sort -rnk 2,2 > {csv_file}"
+                    csv_file = os.path.join(output_dir, f"{barcode_dir}_iteration{iteration}.csv")
+                    samtools_command = f"samtools coverage {bam_file} | cut -f 1,4 | awk '$2 > 0' | sort -rnk 2,2 | sed 's/\\t/,/g' > {csv_file}"
                     print(f"Running Samtools command sit tight: {samtools_command}")
                     run_command(samtools_command)
 
@@ -81,7 +94,24 @@ while True:  # Loop to keep running Guppy and downstream analysis
                     with open(csv_file, 'r+') as f:
                         content = f.read()
                         f.seek(0, 0)
-                        f.write("Stx_type,number_of_reads_mapped\n" + content)
+                        f.write("gene_name,number_of_reads_mapped\n" + content)
+                    # before deleting calculate size of the fastq file and add it to the csv file
+                    result = subprocess.run(["ls", "-ltr", concatenated_fastq_file], capture_output=True, text=True)
+                    ls_output = result.stdout
+
+                    # Extract the file size from the ls -ltr output (assuming it's the 5th field)
+                    file_size = int(ls_output.split()[4])
+
+                    # Calculating the division result by using general Ecoli genome size of 5 million bp
+                    genome_coverage_value = file_size / 5000000
+
+                    # Format the output string
+                    output_string = ["genome_coverage", f"{genome_coverage_value}X"]
+
+                    # Append the result to the CSV file
+                    with open(csv_file, mode='a', newline='') as file:
+                        writer = csv.writer(file)
+                        writer.writerow(output_string)
 
                     # Deleting the temporary concatenated FASTQ files else it will throw a memory error
                     os.remove(concatenated_fastq_file)
@@ -95,4 +125,3 @@ while True:  # Loop to keep running Guppy and downstream analysis
     # Pause execution for 30 minutes before running Guppy again
     print("Waiting for 30 minutes before running Guppy again and redoing analysis all again...")
     time.sleep(1800)
-
